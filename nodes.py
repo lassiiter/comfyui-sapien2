@@ -19,6 +19,8 @@ from .sapiens2_runtime import (
     run_pointmap,
     run_pose,
     run_segmentation,
+    save_pointmap_ply,
+    save_pose_json,
 )
 
 _MODEL_CACHE: dict[tuple[str, str, str, str, str], Sapiens2ModelBundle] = {}
@@ -265,6 +267,57 @@ class Sapiens2PointmapDepthOnly:
         return (pointmap["pointmap"][:, 2, :, :],)
 
 
+class Sapiens2SavePointmapPLY:
+    CATEGORY = "Sapiens2"
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_files",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "pointmap": ("SAPIENS2_POINTMAP",),
+                "filename_prefix": (
+                    "STRING",
+                    {
+                        "default": "sapiens2/pointmap",
+                        "multiline": False,
+                    },
+                ),
+                "use_mask": ("BOOLEAN", {"default": True}),
+                "include_color": ("BOOLEAN", {"default": True}),
+                "binary": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
+                "image": ("IMAGE",),
+                "mask": ("MASK",),
+            },
+        }
+
+    def save(
+        self,
+        pointmap: dict[str, Any],
+        filename_prefix: str,
+        use_mask: bool,
+        include_color: bool,
+        binary: bool,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+    ):
+        saved_paths = save_pointmap_ply(
+            pointmap=pointmap,
+            filename_prefix=filename_prefix,
+            image_batch=image,
+            mask=mask,
+            include_color=include_color,
+            use_mask=use_mask,
+            binary=binary,
+        )
+        return ("\n".join(saved_paths),)
+
+
 class Sapiens2PersonDetection:
     CATEGORY = "Sapiens2"
     FUNCTION = "detect"
@@ -361,6 +414,43 @@ class Sapiens2PoseEstimation:
         )
 
 
+class Sapiens2SavePoseJSON:
+    CATEGORY = "Sapiens2"
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("saved_files",)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "pose": ("SAPIENS2_POSE",),
+                "filename_prefix": (
+                    "STRING",
+                    {
+                        "default": "sapiens2/pose",
+                        "multiline": False,
+                    },
+                ),
+                "pretty_json": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    def save(
+        self,
+        pose: dict[str, Any],
+        filename_prefix: str,
+        pretty_json: bool,
+    ):
+        saved_paths = save_pose_json(
+            pose=pose,
+            filename_prefix=filename_prefix,
+            pretty_json=pretty_json,
+        )
+        return ("\n".join(saved_paths),)
+
+
 NODE_CLASS_MAPPINGS = {
     "Sapiens2LoadSegModel": Sapiens2LoadSegModel,
     "Sapiens2LoadNormalModel": Sapiens2LoadNormalModel,
@@ -372,8 +462,10 @@ NODE_CLASS_MAPPINGS = {
     "Sapiens2NormalEstimation": Sapiens2NormalEstimation,
     "Sapiens2PointmapEstimation": Sapiens2PointmapEstimation,
     "Sapiens2PointmapDepthOnly": Sapiens2PointmapDepthOnly,
+    "Sapiens2SavePointmapPLY": Sapiens2SavePointmapPLY,
     "Sapiens2PersonDetection": Sapiens2PersonDetection,
     "Sapiens2PoseEstimation": Sapiens2PoseEstimation,
+    "Sapiens2SavePoseJSON": Sapiens2SavePoseJSON,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -387,6 +479,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Sapiens2NormalEstimation": "Sapiens2 Normal Estimation",
     "Sapiens2PointmapEstimation": "Sapiens2 Pointmap Estimation",
     "Sapiens2PointmapDepthOnly": "Sapiens2 Pointmap Depth Only",
+    "Sapiens2SavePointmapPLY": "Sapiens2 Save Pointmap PLY",
     "Sapiens2PersonDetection": "Sapiens2 Person Detection",
     "Sapiens2PoseEstimation": "Sapiens2 Pose Estimation",
+    "Sapiens2SavePoseJSON": "Sapiens2 Save Pose JSON",
 }

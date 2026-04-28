@@ -18,8 +18,10 @@ It is a thin integration layer, not a reimplementation. The nodes use Meta's own
 - segmentation overlays and part-mask extraction
 - normal-map inference with optional masking
 - pointmap inference with grayscale or turbo inverse-depth previews
+- pointmap export to `.ply`
 - RTMDet-based person detection for pose
 - top-down 308-keypoint pose estimation with rendered overlays
+- pose export to `.json`
 - structured intermediate objects so nodes can be chained together without rerunning every stage
 
 ## Node Summary
@@ -80,6 +82,17 @@ These nodes:
   - accepts either `detector` or precomputed `bboxes`
   - outputs `overlay IMAGE`
   - outputs `pose SAPIENS2_POSE`
+
+### Export Nodes
+
+- `Sapiens2 Save Pointmap PLY`
+  - writes one `.ply` file per batch image into Comfy's output directory
+  - accepts optional `image` input for vertex colors
+  - accepts optional `mask` input to filter exported vertices
+
+- `Sapiens2 Save Pose JSON`
+  - writes one `.json` file per batch image into Comfy's output directory
+  - exports per-person `bbox`, `keypoints`, and `keypoint_scores`
 
 ## Data Flow
 
@@ -273,6 +286,18 @@ Notes:
 - `turbo_inverse_depth` is the paper-style view
 - `grayscale_z` is a simpler depth-style preview
 
+To export the underlying point cloud:
+
+```text
+Sapiens2 Pointmap Estimation.pointmap
+-> Sapiens2 Save Pointmap PLY
+```
+
+Optional:
+
+- connect the original `Load Image.image` into `Sapiens2 Save Pointmap PLY.image` for RGB vertex colors
+- connect a person/body `mask` to export only the subject
+
 ### Pose
 
 Minimal path:
@@ -297,11 +322,17 @@ Load Image
 
 When `bboxes` is connected to `Sapiens2 Pose Estimation`, it takes precedence over the optional `detector` input.
 
+To export pose data:
+
+```text
+Sapiens2 Pose Estimation.pose
+-> Sapiens2 Save Pose JSON
+```
+
 ## Current Limitations
 
 - this repo still relies on the official Meta repo being present locally
-- pointmap output is currently preview-oriented; there is no built-in `.ply` export node yet
-- there is no dedicated pose export node yet; pose data is available as `SAPIENS2_POSE`
+- pointmap `.ply` export writes the predicted pointmap coordinate frame directly; it is not a calibrated camera-space reconstruction node
 - checkpoint dropdowns are populated at startup, so newly added files usually require a restart
 - pose quality depends heavily on the detector stage and on person-centric framing
 

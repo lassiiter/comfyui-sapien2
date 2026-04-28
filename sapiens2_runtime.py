@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -482,6 +484,276 @@ def _broadcast_mask(mask: torch.Tensor | None, batch_size: int, height: int, wid
             align_corners=False,
         ).squeeze(1)
     return (mask > 0.5).to(dtype=torch.float32, device="cpu")
+
+
+def _broadcast_image_batch(
+    image_batch: torch.Tensor | None,
+    batch_size: int,
+    height: int,
+    width: int,
+) -> torch.Tensor | None:
+    if image_batch is None:
+        return None
+
+    if image_batch.ndim == 3:
+        image_batch = image_batch.unsqueeze(0)
+    if image_batch.ndim != 4:
+        raise ValueError("IMAGE inputs must be shaped [H,W,C] or [B,H,W,C].")
+    if image_batch.shape[0] == 1 and batch_size > 1:
+        image_batch = image_batch.expand(batch_size, -1, -1, -1)
+    if image_batch.shape[0] != batch_size:
+        raise ValueError(
+            f"IMAGE batch ({image_batch.shape[0]}) does not match expected batch ({batch_size})."
+        )
+    if image_batch.shape[1] != height or image_batch.shape[2] != width:
+        image_batch = F.interpolate(
+            image_batch.movedim(-1, 1),
+            size=(height, width),
+            mode="bilinear",
+            align_corners=False,
+        ).movedim(1, -1)
+    return image_batch.detach().cpu().clamp(0.0, 1.0)
+
+
+def _output_root_directory() -> Path:
+    if folder_paths is not None and hasattr(folder_paths, "get_output_directory"):
+        output_root = Path(folder_paths.get_output_directory())
+    else:
+        output_root = Path.cwd() / "output"
+    output_root.mkdir(parents=True, exist_ok=True)
+    return output_root.resolve()
+
+
+def _sanitize_path_component(value: str, fallback: str) -> str:
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", str(value).strip())
+    sanitized = sanitized.rstrip(". ")
+    return sanitized or fallback
+
+
+def _resolve_export_prefix(filename_prefix: str, default_stem: str) -> tuple[Path, str]:
+    prefix_text = str(filename_prefix).strip().replace("\\", "/")
+    if not prefix_text:
+        prefix_text = default_stem
+
+    prefix_path = Path(prefix_text)
+    if prefix_path.is_absolute():
+        raise ValueError("filename_prefix must be relative to the Comfy output directory.")
+
+    raw_parts = [part for part in prefix_path.parts if part not in ("", ".")]
+    if any(part == ".." for part in raw_parts):
+        raise ValueError("filename_prefix cannot escape the Comfy output directory.")
+
+    sanitized_parts = [
+        _sanitize_path_component(part, "sapiens2")
+        for part in raw_parts
+    ]
+    if not sanitized_parts:
+        return Path(), default_stem
+    if len(sanitized_parts) == 1:
+        return Path(), _sanitize_path_component(sanitized_parts[0], default_stem)
+    return (
+        Path(*sanitized_parts[:-1]),
+        _sanitize_path_component(sanitized_parts[-1], default_stem),
+    )
+
+
+def _resolve_export_path(
+    filename_prefix: str,
+    extension: str,
+    batch_index: int,
+    default_stem: str,
+) -> Path:
+    output_root = _output_root_directory()
+    subdir, stem = _resolve_export_prefix(filename_prefix, default_stem)
+    target_dir = (output_root / subdir).resolve()
+    if target_dir != output_root and output_root not in target_dir.parents:
+        raise ValueError("Resolved export path escapes the Comfy output directory.")
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    candidate = target_dir / f"{stem}_{batch_index:05d}.{extension}"
+    counter = 1
+    while candidate.exists():
+        candidate = target_dir / f"{stem}_{batch_index:05d}_{counter:03d}.{extension}"
+        counter += 1
+    return candidate
+
+
+def _write_ply_file(
+    path: Path,
+    points: np.ndarray,
+    colors: np.ndarray | None,
+    binary: bool,
+) -> None:
+    if colors is not None and colors.shape[0] != points.shape[0]:
+        raise ValueError("PLY color rows must match the number of points.")
+
+    header_lines = [
+        "ply",
+        f"format {'binary_little_endian' if binary else 'ascii'} 1.0",
+        f"element vertex {points.shape[0]}",
+        "property float x",
+        "property float y",
+        "property float z",
+    ]
+    if colors is not None:
+        header_lines.extend(
+            [
+                "property uchar red",
+                "property uchar green",
+                "property uchar blue",
+            ]
+        )
+    header_lines.append("end_header\n")
+    header = "\n".join(header_lines)
+
+    if binary:
+        dtype_fields = [("x", "<f4"), ("y", "<f4"), ("z", "<f4")]
+        if colors is not None:
+            dtype_fields.extend([("red", "u1"), ("green", "u1"), ("blue", "u1")])
+        vertices = np.empty(points.shape[0], dtype=np.dtype(dtype_fields))
+        vertices["x"] = points[:, 0].astype(np.float32, copy=False)
+        vertices["y"] = points[:, 1].astype(np.float32, copy=False)
+        vertices["z"] = points[:, 2].astype(np.float32, copy=False)
+        if colors is not None:
+            vertices["red"] = colors[:, 0]
+            vertices["green"] = colors[:, 1]
+            vertices["blue"] = colors[:, 2]
+        with path.open("wb") as handle:
+            handle.write(header.encode("ascii"))
+            vertices.tofile(handle)
+        return
+
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(header)
+        if colors is None:
+            for x, y, z in points.tolist():
+                handle.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
+        else:
+            rows = np.concatenate([points, colors.astype(np.float32)], axis=1)
+            for row in rows.tolist():
+                x, y, z, red, green, blue = row
+                handle.write(
+                    f"{x:.9g} {y:.9g} {z:.9g} "
+                    f"{int(round(red))} {int(round(green))} {int(round(blue))}\n"
+                )
+
+
+def save_pointmap_ply(
+    pointmap: dict[str, Any],
+    filename_prefix: str,
+    image_batch: torch.Tensor | None,
+    mask: torch.Tensor | None,
+    include_color: bool,
+    use_mask: bool,
+    binary: bool,
+) -> list[str]:
+    if pointmap.get("task") != "pointmap":
+        raise ValueError("Sapiens2 Save Pointmap PLY expects a SAPIENS2_POINTMAP input.")
+
+    pointmap_tensor = torch.as_tensor(pointmap["pointmap"], dtype=torch.float32).detach().cpu()
+    if pointmap_tensor.ndim != 4 or pointmap_tensor.shape[1] != 3:
+        raise ValueError("SAPIENS2_POINTMAP data must be shaped [B,3,H,W].")
+
+    batch_size, _, height, width = pointmap_tensor.shape
+    mask_source = mask if mask is not None else pointmap.get("mask")
+    resolved_mask = (
+        _broadcast_mask(mask_source, batch_size, height, width)
+        if use_mask
+        else torch.ones((batch_size, height, width), dtype=torch.float32)
+    )
+    resolved_images = (
+        _broadcast_image_batch(image_batch, batch_size, height, width)
+        if include_color and image_batch is not None
+        else None
+    )
+
+    saved_paths: list[str] = []
+    for index in range(batch_size):
+        points = pointmap_tensor[index].movedim(0, -1).reshape(-1, 3).numpy()
+        valid = np.isfinite(points).all(axis=1)
+        if use_mask:
+            valid &= resolved_mask[index].reshape(-1).numpy() > 0.5
+
+        points = np.ascontiguousarray(points[valid], dtype=np.float32)
+        colors = None
+        if resolved_images is not None:
+            colors = _image_to_uint8_rgb(resolved_images[index]).reshape(-1, 3)[valid]
+            colors = np.ascontiguousarray(colors, dtype=np.uint8)
+
+        output_path = _resolve_export_path(filename_prefix, "ply", index, "pointmap")
+        _write_ply_file(output_path, points, colors, binary=binary)
+        saved_paths.append(str(output_path))
+
+    return saved_paths
+
+
+def save_pose_json(
+    pose: dict[str, Any],
+    filename_prefix: str,
+    pretty_json: bool,
+) -> list[str]:
+    if pose.get("task") != "pose":
+        raise ValueError("Sapiens2 Save Pose JSON expects a SAPIENS2_POSE input.")
+
+    instances = pose.get("instances")
+    if not isinstance(instances, list):
+        raise ValueError("SAPIENS2_POSE metadata is missing its per-image instances list.")
+
+    keypoint_names = [str(name) for name in pose.get("keypoint_names", [])]
+    skeleton_links = [list(link) for link in pose.get("skeleton_links", [])]
+    saved_paths: list[str] = []
+
+    for image_index, instance in enumerate(instances):
+        boxes_tensor = torch.as_tensor(instance.get("bboxes", []), dtype=torch.float32).detach().cpu()
+        keypoints_tensor = torch.as_tensor(
+            instance.get("keypoints", []),
+            dtype=torch.float32,
+        ).detach().cpu()
+        keypoint_scores_tensor = torch.as_tensor(
+            instance.get("keypoint_scores", []),
+            dtype=torch.float32,
+        ).detach().cpu()
+
+        num_instances = boxes_tensor.shape[0]
+        if keypoints_tensor.shape[0] != num_instances or keypoint_scores_tensor.shape[0] != num_instances:
+            raise ValueError(
+                "Pose export expected matching counts for bboxes, keypoints, and keypoint_scores."
+            )
+
+        payload = {
+            "task": "pose",
+            "image_index": image_index,
+            "source": str(pose.get("source", "unknown")),
+            "model_size": str(pose.get("model_size", "")),
+            "checkpoint_name": str(pose.get("checkpoint_name", "")),
+            "num_keypoints": int(pose.get("num_keypoints", len(keypoint_names))),
+            "keypoint_names": keypoint_names,
+            "skeleton_links": skeleton_links,
+            "bbox_format": "xyxy",
+            "instances": [],
+        }
+        for person_index in range(num_instances):
+            payload["instances"].append(
+                {
+                    "person_index": person_index,
+                    "bbox": boxes_tensor[person_index].tolist(),
+                    "keypoints": keypoints_tensor[person_index].tolist(),
+                    "keypoint_scores": keypoint_scores_tensor[person_index].tolist(),
+                }
+            )
+
+        output_path = _resolve_export_path(filename_prefix, "json", image_index, "pose")
+        with output_path.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(
+                payload,
+                handle,
+                indent=2 if pretty_json else None,
+                ensure_ascii=True,
+            )
+            handle.write("\n")
+        saved_paths.append(str(output_path))
+
+    return saved_paths
 
 
 def _normalize_boxes_tensor(

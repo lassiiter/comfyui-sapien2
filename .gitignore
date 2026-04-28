@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 
 .uv-cache/
+output/
 
 .DS_Store
 Thumbs.db
