@@ -11,8 +11,11 @@ This project wraps the official `facebookresearch/sapiens2` codebase so you can 
 
 The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
 
-<img width="1470" height="523" alt="comfy" src="https://github.com/user-attachments/assets/c719eaba-1921-49fb-90f3-23854247cf21" />
 
+<p align="center">
+  <img width="1470" height="523" alt="comfy" src="https://github.com/user-attachments/assets/c719eaba-1921-49fb-90f3-23854247cf21" />
+  <em>Example node usage in ComfyUI.</em>
+</p>
 
 ## What This Repo Provides
 
@@ -24,6 +27,12 @@ The nodes use Meta's own configs, preprocessing, and model code, while exposing 
 - RTMDet-based person detection for pose
 - top-down 308-keypoint pose estimation with rendered overlays
 - structured intermediate objects so nodes can be chained together without rerunning every stage
+
+<br>
+<p align="center">
+  <img width="933" height="367" alt="paper images2" src="https://github.com/user-attachments/assets/64b83660-927b-497a-a9ed-6bcf481100d9" /><br>
+  <em>Image from https://arxiv.org/pdf/2604.21681.</em>
+</p>
 
 ## Node Summary
 
