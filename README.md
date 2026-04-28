@@ -9,7 +9,7 @@ This project wraps the official `facebookresearch/sapiens2` codebase so you can 
 - pointmaps
 - 308-keypoint pose estimation
 
-It is a thin integration layer, not a reimplementation. The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
+The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
 
 <img width="1470" height="523" alt="comfy" src="https://github.com/user-attachments/assets/c719eaba-1921-49fb-90f3-23854247cf21" />
 
