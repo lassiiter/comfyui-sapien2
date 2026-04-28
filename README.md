@@ -9,7 +9,13 @@ This project wraps the official `facebookresearch/sapiens2` codebase so you can 
 - pointmaps
 - 308-keypoint pose estimation
 
-It is a thin integration layer, not a reimplementation. The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
+The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
+
+
+<p align="center">
+  <img width="1470" height="523" alt="comfy" src="https://github.com/user-attachments/assets/c719eaba-1921-49fb-90f3-23854247cf21" />
+  <em>Example node usage in ComfyUI.</em>
+</p>
 
 ## What This Repo Provides
 
@@ -18,11 +24,15 @@ It is a thin integration layer, not a reimplementation. The nodes use Meta's own
 - segmentation overlays and part-mask extraction
 - normal-map inference with optional masking
 - pointmap inference with grayscale or turbo inverse-depth previews
-- pointmap export to `.ply`
 - RTMDet-based person detection for pose
 - top-down 308-keypoint pose estimation with rendered overlays
-- pose export to `.json`
 - structured intermediate objects so nodes can be chained together without rerunning every stage
+
+<br>
+<p align="center">
+  <img width="933" height="367" alt="paper images2" src="https://github.com/user-attachments/assets/64b83660-927b-497a-a9ed-6bcf481100d9" /><br>
+  <em>Image from https://arxiv.org/pdf/2604.21681.</em>
+</p>
 
 ## Node Summary
 
@@ -82,35 +92,6 @@ These nodes:
   - accepts either `detector` or precomputed `bboxes`
   - outputs `overlay IMAGE`
   - outputs `pose SAPIENS2_POSE`
-
-### Export Nodes
-
-- `Sapiens2 Save Pointmap PLY`
-  - writes one `.ply` file per batch image into Comfy's output directory
-  - accepts optional `image` input for vertex colors
-  - accepts optional `mask` input to filter exported vertices
-
-- `Sapiens2 Save Pose JSON`
-  - writes one `.json` file per batch image into Comfy's output directory
-  - exports per-person `bbox`, `keypoints`, and `keypoint_scores`
-
-## Data Flow
-
-The node graph is designed so you can reuse intermediate results:
-
-- segmentation labels can be converted into targeted body-part masks
-- masks can be fed into normal and pointmap nodes for cleaner previews
-- person detections can be previewed separately or passed directly into pose estimation
-- pose output includes per-person boxes, keypoints, and keypoint confidence scores in image coordinates
-
-Custom wire types used by this repo:
-
-- `SAPIENS2_SEG_LABELS`
-- `SAPIENS2_POINTMAP`
-- `SAPIENS2_BBOXES`
-- `SAPIENS2_POSE`
-- `SAPIENS2_MODEL`
-- `SAPIENS2_DETECTOR`
 
 ## Important Dependency Model
 
@@ -286,18 +267,6 @@ Notes:
 - `turbo_inverse_depth` is the paper-style view
 - `grayscale_z` is a simpler depth-style preview
 
-To export the underlying point cloud:
-
-```text
-Sapiens2 Pointmap Estimation.pointmap
--> Sapiens2 Save Pointmap PLY
-```
-
-Optional:
-
-- connect the original `Load Image.image` into `Sapiens2 Save Pointmap PLY.image` for RGB vertex colors
-- connect a person/body `mask` to export only the subject
-
 ### Pose
 
 Minimal path:
@@ -321,28 +290,6 @@ Load Image
 ```
 
 When `bboxes` is connected to `Sapiens2 Pose Estimation`, it takes precedence over the optional `detector` input.
-
-To export pose data:
-
-```text
-Sapiens2 Pose Estimation.pose
--> Sapiens2 Save Pose JSON
-```
-
-## Current Limitations
-
-- this repo still relies on the official Meta repo being present locally
-- pointmap `.ply` export writes the predicted pointmap coordinate frame directly; it is not a calibrated camera-space reconstruction node
-- checkpoint dropdowns are populated at startup, so newly added files usually require a restart
-- pose quality depends heavily on the detector stage and on person-centric framing
-
-## Repo Files
-
-- [__init__.py](./__init__.py)
-- [nodes.py](./nodes.py)
-- [sapiens2_runtime.py](./sapiens2_runtime.py)
-- [pose_render_utils.py](./pose_render_utils.py)
-- [requirements.txt](./requirements.txt)
 
 ## Official References
 
