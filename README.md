@@ -11,6 +11,9 @@ This project wraps the official `facebookresearch/sapiens2` codebase so you can 
 
 It is a thin integration layer, not a reimplementation. The nodes use Meta's own configs, preprocessing, and model code, while exposing Comfy-friendly loaders, previews, masks, and structured outputs.
 
+<img width="1470" height="523" alt="comfy" src="https://github.com/user-attachments/assets/c719eaba-1921-49fb-90f3-23854247cf21" />
+
+
 ## What This Repo Provides
 
 - task-specific loader nodes with Comfy checkpoint dropdowns
@@ -80,24 +83,6 @@ These nodes:
   - accepts either `detector` or precomputed `bboxes`
   - outputs `overlay IMAGE`
   - outputs `pose SAPIENS2_POSE`
-
-## Data Flow
-
-The node graph is designed so you can reuse intermediate results:
-
-- segmentation labels can be converted into targeted body-part masks
-- masks can be fed into normal and pointmap nodes for cleaner previews
-- person detections can be previewed separately or passed directly into pose estimation
-- pose output includes per-person boxes, keypoints, and keypoint confidence scores in image coordinates
-
-Custom wire types used by this repo:
-
-- `SAPIENS2_SEG_LABELS`
-- `SAPIENS2_POINTMAP`
-- `SAPIENS2_BBOXES`
-- `SAPIENS2_POSE`
-- `SAPIENS2_MODEL`
-- `SAPIENS2_DETECTOR`
 
 ## Important Dependency Model
 
@@ -296,22 +281,6 @@ Load Image
 ```
 
 When `bboxes` is connected to `Sapiens2 Pose Estimation`, it takes precedence over the optional `detector` input.
-
-## Current Limitations
-
-- this repo still relies on the official Meta repo being present locally
-- pointmap output is currently preview-oriented; there is no built-in `.ply` export node yet
-- there is no dedicated pose export node yet; pose data is available as `SAPIENS2_POSE`
-- checkpoint dropdowns are populated at startup, so newly added files usually require a restart
-- pose quality depends heavily on the detector stage and on person-centric framing
-
-## Repo Files
-
-- [__init__.py](./__init__.py)
-- [nodes.py](./nodes.py)
-- [sapiens2_runtime.py](./sapiens2_runtime.py)
-- [pose_render_utils.py](./pose_render_utils.py)
-- [requirements.txt](./requirements.txt)
 
 ## Official References
 
