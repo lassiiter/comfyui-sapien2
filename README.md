@@ -93,6 +93,10 @@ These nodes:
   - outputs `overlay IMAGE`
   - outputs `pose SAPIENS2_POSE`
 
+
+<img width="1567" height="635" alt="pose" src="https://github.com/user-attachments/assets/420c98dd-d1ef-4837-b136-41449e290110" />
+
+
 ## Important Dependency Model
 
 This repo depends on a local clone of the official `facebookresearch/sapiens2` repository. It does not vendor Meta's full implementation.
